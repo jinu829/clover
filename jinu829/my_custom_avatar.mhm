@@ -1,0 +1,10 @@
+version 1.2.0
+tags body
+modifier macrodetails/Gender 1.0000
+modifier macrodetails/Age 0.5000
+modifier macrodetails-universal/Muscle 0.6000
+modifier macrodetails-universal/Weight 0.4000
+modifier measurement/measurement-chest-trans 0.5438
+modifier measurement/measurement-waist-trans 0.3187
+modifier measurement/measurement-hip-trans 0.1161
+modifier measurement/measurement-thigh-trans 0.1783
