@@ -1,0 +1,9 @@
+# The GarmentCode core dependencies are declared in setup.cfg.
+# These packages add PNG preprocessing and OCR for generate_from_product_images.py.
+Pillow>=10
+opencv-python>=4.8
+pytesseract>=0.3.10
+# Local drag-and-drop review app (already a GarmentCode dependency, listed here
+# so a minimal product-adapter environment can install it explicitly).
+nicegui>=2.0
+pywebview>=6.0
