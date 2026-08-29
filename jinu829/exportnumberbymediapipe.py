@@ -301,3 +301,9 @@ if __name__ == "__main__":
 #.venv313\Scripts\activate
 #pip install opencv-python mediapipe numpy
 #python exportnumberbymediapipe.py testdata/sample_person.jpg
+
+#여러 사진을 한꺼번에 돌리고 싶다면
+#python exportnumberbymediapipe.py testdata폴더경로 --out-dir measurements : 모든 사진에 대해 측정 결과 measurement생성
+"""Get-ChildItem measurements\*.json | ForEach-Object { #모든 measurement내의 사진에 대해서 createHuman파일을 돌림.
+    python createHuman.py $_.FullName --out "$($_.BaseName).mhm"
+}"""
