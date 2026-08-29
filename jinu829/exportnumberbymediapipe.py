@@ -106,6 +106,15 @@ def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="m
         return
     h, w, _ = image.shape
 
+    # mediapipe는 너비/높이가 4의 배수가 아닌 이미지에서 세그멘테이션 마스크를
+    # 생성할 때 내부 stride 정렬이 깨져 네이티브 크래시
+    # (Check failed: 1 == ChannelSize())가 발생합니다. 오른쪽/아래쪽 가장자리를
+    # 복제해 4의 배수로 패딩하여 이를 피합니다.
+    pad_bottom, pad_right = (-h) % 4, (-w) % 4
+    if pad_bottom or pad_right:
+        image = cv2.copyMakeBorder(image, 0, pad_bottom, 0, pad_right, cv2.BORDER_REPLICATE)
+        h, w, _ = image.shape
+
     options = PoseLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=MODEL_PATH),
         running_mode=VisionRunningMode.IMAGE,
@@ -113,7 +122,7 @@ def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="m
     )
 
     with PoseLandmarker.create_from_options(options) as landmarker:
-        mp_image = mp.Image.create_from_file(image_path)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         result = landmarker.detect(mp_image)
 
     if not result.pose_landmarks:
