@@ -1,10 +1,16 @@
+import os
+import shutil
+
+MAKEHUMAN_MODELS_DIR = r"C:\Users\enjoyer\Documents\makehuman\v1py3"
+
+
 def generate_mhm_file(output_path, params):
     """
     측정된 MakeHuman 파라미터 딕셔너리를 입력받아 .mhm 파일을 생성하는 함수
     """
     # 기본 MHM 헤더 설정
     mhm_content = [
-        "version 1.2.0",
+        "version v1.2.0",   # MakeHuman은 "v" 접두사가 있는 버전만 파싱 가능
         "tags body",
     ]
 
@@ -18,10 +24,21 @@ def generate_mhm_file(output_path, params):
 
     print(f"MHM 설정 파일이 생성되었습니다: {output_path}")
 
+    # MakeHuman 모델 폴더로 자동 복사
+    if os.path.isdir(MAKEHUMAN_MODELS_DIR):
+        dest = os.path.join(MAKEHUMAN_MODELS_DIR, os.path.basename(output_path))
+        shutil.copy2(output_path, dest)
+        print(f"MakeHuman 모델 폴더로 복사되었습니다: {dest}")
+    else:
+        print(f"경고: MakeHuman 모델 폴더를 찾을 수 없습니다: {MAKEHUMAN_MODELS_DIR}")
+
 
 def normalize(value, min_value, max_value):
-    """실측 cm 값을 MakeHuman 모디파이어 비율(0.0~1.0)로 정규화"""
-    return max(0.0, min(1.0, (value - min_value) / (max_value - min_value)))
+    """실측 cm 값을 MakeHuman TwoSidedModifier 범위(-1.0~1.0)로 정규화.
+    범위 중간값 → 0 (기본 체형), 최솟값 → -1, 최댓값 → 1."""
+    mid = (min_value + max_value) / 2
+    half = (max_value - min_value) / 2
+    return max(-1.0, min(1.0, (value - mid) / half))
 
 
 def load_measurements(export_path="measurements.json"):
@@ -58,17 +75,18 @@ def build_avatar(measurements_path="measurements.json", output_path="my_custom_a
         "macrodetails-universal/Weight": 0.4,
 
         # 2. 세부 측정 치수 파라미터 (Modifiers)
-        # exportnumberbymediapipe.py에서 넘어온 실측 cm 값을 정규화하여 전달합니다.
-        "measurement/measurement-chest-trans": normalize(
+        # MakeHuman 실제 modifier 이름: measure/<target>-decr|incr
+        # 값 범위: -1.0(최소) ~ 0.0(기본 체형) ~ 1.0(최대)
+        "measure/measure-bust-circ-decr|incr": normalize(
             measured["chest_circumference_cm"], *CIRC_RANGE_CM["chest"]
         ),
-        "measurement/measurement-waist-trans": normalize(
+        "measure/measure-waist-circ-decr|incr": normalize(
             measured["waist_circumference_cm"], *CIRC_RANGE_CM["waist"]
         ),
-        "measurement/measurement-hip-trans": normalize(
+        "measure/measure-hips-circ-decr|incr": normalize(
             measured["hip_circumference_cm"], *CIRC_RANGE_CM["hip"]
         ),
-        "measurement/measurement-thigh-trans": normalize(
+        "measure/measure-thigh-circ-decr|incr": normalize(
             measured["thigh_circumference_cm"], *CIRC_RANGE_CM["thigh"]
         ),
     }

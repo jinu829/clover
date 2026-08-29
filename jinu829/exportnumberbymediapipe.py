@@ -295,3 +295,9 @@ if __name__ == "__main__":
         out_dir=args.out_dir,
         save_visualizations=not args.no_viz,
     )
+
+# 실행 방법(터미널에 해당 코드 순차적으로 입력)
+#py -3.13 -m venv .venv313
+#.venv313\Scripts\activate
+#pip install opencv-python mediapipe numpy
+#python exportnumberbymediapipe.py testdata/sample_person.jpg
