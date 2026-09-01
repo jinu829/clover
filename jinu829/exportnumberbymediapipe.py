@@ -19,15 +19,6 @@ DEPTH_RATIO = {
     "thigh": 0.85,
 }
 
-# NOTE: Python 3.14 + mediapipe 조합에서는 세그멘테이션 마스크를
-# result.segmentation_masks[0].numpy_view() 로 변환할 때 네이티브 크래시
-# (STATUS_STACK_BUFFER_OVERRUN)가 발생했습니다 (mediapipe 네이티브 바인딩과
-# 그 Python/numpy 조합 간의 ABI 비호환 문제로 추정). Python 3.13 가상환경
-# (jinu829/.venv313)에서는 이 크래시가 재현되지 않아, 아래에서 세그멘테이션
-# 마스크 기반 실루엣 스캔으로 폭을 측정합니다.
-#
-# 아래 상수들은 마스크에서 실루엣을 찾지 못했을 때(예: 랜드마크가 마스크
-# 경계 밖으로 벗어난 경우)를 위한 폴백 근사에만 사용됩니다.
 WAIST_INTERP_RATIO = 0.55        # 어깨~골반 사이 허리 위치 비율
 
 # mediapipe의 LEFT_HIP/RIGHT_HIP 랜드마크는 골반 관절 중심에 찍혀
@@ -56,32 +47,36 @@ def _silhouette_width_at(mask, cx, cy, expected_half_width):
     (cx, cy)가 실루엣 밖이면 근처 픽셀에서 다시 탐색하고, 그래도 찾지
     못하면 None을 반환한다(호출부에서 폴백 근사 사용).
     """
-    h, w = mask.shape
-    center_x = min(max(int(round(cx)), 0), w - 1)
+    h, w = mask.shape #마스크 배열의 높이와 너비 가져오기
+    center_x = min(max(int(round(cx)), 0), w - 1) #부동소수점 형식인 cx를 정수 형식으로 반올림. 이때 올림을 하면서 너비보다 커지면 안되기에 w-1 보다 작을 경우에만 선택
     y = min(max(int(round(cy)), 0), h - 1)
-    x0 = center_x
-    row = mask[y] > SEGMENTATION_THRESHOLD
+    x0 = center_x #가로 탐색을 시작할 중심 지점.
+    row = mask[y] > SEGMENTATION_THRESHOLD #가로로 넓힐 해당 높이의 가로 행 데이터를 담기. 이때 사람이라고 확실한 데이터만 담음.
 
+    #관절 중심점이 마스크 경계 바로 바깥에 찍히더라도 반경 내에서 가장 가까운 신체 영역을 자동으로 찾아내어, 세그멘테이션 마스크 스캔 실패로 인한 치수 측정 누락 오류를 방지하고 파이프라인의 안정성을 높이는 역할을 함.
     if not row[x0]:
-        for dx in range(1, SILHOUETTE_SEARCH_RADIUS + 1):
-            if x0 - dx >= 0 and row[x0 - dx]:
+        for dx in range(1, SILHOUETTE_SEARCH_RADIUS + 1): #dx를 1픽셀부터 허용한 최댓값까지 천천히 올림.
+            if x0 - dx >= 0 and row[x0 - dx]: #만약 dx만큼 줄인 게 0보다 크고(이미지 내) dx만큼 줄인 게 실루엣 마스크 세그멘테이션 마스크 안이 있다 -> 중심점으로 적합.
                 x0 -= dx
                 break
             if x0 + dx < w and row[x0 + dx]:
                 x0 += dx
                 break
-        else:
+        else: #두 경우 모두 안될 경우 적당한 지점이 없기에 None반환.
             return None
 
+        
+    #탐색을 허용할 수 있는 최대 범위(옷 같은 걸로 인하여 세그멘테이션 마스크가 좌우로 비정상적으로 길어지는 걸 방지한다.)
     max_reach = expected_half_width * SILHOUETTE_TOLERANCE
 
+    #기준점 x0를 중심으로 좌우 방향으로 폭을 넓혀가며 세그멘테이션 마스크 끝 지점을 파악하고, 좌우 좌표 위치와 폭을 반환하는 코드
     left = x0
     while left > 0 and row[left - 1] and (center_x - (left - 1)) <= max_reach:
         left -= 1
     right = x0
     while right < w - 1 and row[right + 1] and ((right + 1) - center_x) <= max_reach:
         right += 1
-    return left, right, right - left
+    return left, right, right - left    
 
 
 def _ellipse_circumference_cm(width_px, scale, depth_ratio):
@@ -94,27 +89,27 @@ def _ellipse_circumference_cm(width_px, scale, depth_ratio):
 def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="measurements.json",
                                  show_window=True, save_visualization_path=None):
     # 1. MediaPipe Tasks API - Pose Landmarker 초기화
-    BaseOptions = mp.tasks.BaseOptions
-    PoseLandmarker = mp.tasks.vision.PoseLandmarker
-    PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
-    VisionRunningMode = mp.tasks.vision.RunningMode
-    PoseLandmark = mp.tasks.vision.PoseLandmark
+    BaseOptions = mp.tasks.BaseOptions #AI 모델 파일(.task)의 경로를 지정하거나 실행 디바이스(CPU/GPU) 등의 기본 설정을 정의하는 클래스
+    PoseLandmarker = mp.tasks.vision.PoseLandmarker #각 관절점(Landmark)를 찾아주는 AI엔진
+    PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions #모델 경로(BaseOptions), 실행 모드(VisionRunningMode), 세그멘테이션 마스크 사용 여부 등을 결정함.
+    VisionRunningMode = mp.tasks.vision.RunningMode #이미지, 동영상 등 어떤 파일을 기준으로 작업할지 모드를 정함.
+    PoseLandmark = mp.tasks.vision.PoseLandmark #추출된 Landmark
 
-    image = cv2.imread(image_path)
+    image = cv2.imread(image_path) #이미지 읽어오기
     if image is None:
         print("이미지를 불러올 수 없습니다.")
         return
     h, w, _ = image.shape
 
-    options = PoseLandmarkerOptions(
-        base_options=BaseOptions(model_asset_path=MODEL_PATH),
-        running_mode=VisionRunningMode.IMAGE,
-        output_segmentation_masks=True,
+    options = PoseLandmarkerOptions( #모델 기본 설정
+        base_options=BaseOptions(model_asset_path=MODEL_PATH), #모델은 위 MODEL_PATH에 지정해둔 모델(구글에서 가져온 Landmark모델)사용
+        running_mode=VisionRunningMode.IMAGE, #작동 대상 파일은 이미지로
+        output_segmentation_masks=True, #세그멘테이션 마스크 출력
     )
 
-    with PoseLandmarker.create_from_options(options) as landmarker:
-        mp_image = mp.Image.create_from_file(image_path)
-        result = landmarker.detect(mp_image)
+    with PoseLandmarker.create_from_options(options) as landmarker: #PoseLandmarker.create_from_options(options)를 landmarker로 치환해서 사용한다. with 컨텍스트 매니저를 사용하여 추론이 끝난 뒤 C++ 네이티브 메모리 및 AI 모델 리소스를 자동으로 안전하게 해제(Close)합니다.
+        mp_image = mp.Image.create_from_file(image_path) #사용하는 이미지를 mediapipe에서 사용하는 mp.Image객체로 자동 변환
+        result = landmarker.detect(mp_image) #PoseLandmarkerResult객체를 result에 반환(이 객체는 33개 Landmark의 2D좌표를 가지고 있음.)
 
     if not result.pose_landmarks:
         print("사람을 인식하지 못했습니다.")
@@ -124,15 +119,15 @@ def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="m
 
     mask = None
     if result.segmentation_masks:
-        mask = result.segmentation_masks[0].numpy_view()
-        if mask.ndim == 3:  # (h, w, 1) -> (h, w)
+        mask = result.segmentation_masks[0].numpy_view() #[0]번째 감지 대상(사람)의 마스크 데이터를 Numpy배열 형태로 변환
+        if mask.ndim == 3:  # (h, w, 1) -> (h, w) #만약 추출된 데이터가 3차원이면 z값을 0으로 만들어서 평탄화
             mask = mask[:, :, 0]
 
-    def px(landmark_id):
+    def px(landmark_id): #mediaPipe에서 반환한 Landmark의 좌표는 0.0~1.0사이의 값으로 추출됨. 따라서 이 값을 실제 사진의 비율에 맞게 수정해주어야 함.
         lm = landmarks[landmark_id]
         return lm.x * w, lm.y * h
 
-    # 2. 픽셀-cm 환산 비율 (Scale) 계산
+    # 2. 픽셀-cm 환산 비율 (Scale) 계산 : 세그멘테이션 마스크를 사용한 추출이 제대로 되지 않았을 때 아래 계산 결과를 사용
     # 정수리 추정(코에서 눈 높이만큼 위로 연장)부터 발뒤꿈치까지의 픽셀 높이 계산
     _, nose_y = px(PoseLandmark.NOSE.value)
     _, eye_y = px(PoseLandmark.LEFT_EYE.value)
@@ -187,7 +182,7 @@ def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="m
             width_px = fallback_width_px
             left_x, right_x = int(cx - width_px / 2), int(cx + width_px / 2)
 
-        circumferences[name] = _ellipse_circumference_cm(width_px, scale, DEPTH_RATIO[name])
+        circumferences[name] = _ellipse_circumference_cm(width_px, scale, DEPTH_RATIO[name]) #둘레 길이 저장
         measured_lines[name] = (int(cy), left_x, right_x)
 
     # --- 시각화 (이미지에 랜드마크, 측정선, 텍스트 그리기) ---
