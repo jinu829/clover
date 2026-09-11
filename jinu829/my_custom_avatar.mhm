@@ -1,0 +1,10 @@
+version v1.2.0
+tags body
+modifier macrodetails/Gender 1.0000
+modifier macrodetails/Age 0.5000
+modifier macrodetails-universal/Muscle 0.6000
+modifier macrodetails-universal/Weight 0.4000
+modifier measure/measure-bust-circ-decr|incr 1.0000
+modifier measure/measure-waist-circ-decr|incr 0.8486
+modifier measure/measure-hips-circ-decr|incr 0.6377
+modifier measure/measure-thigh-circ-decr|incr 0.5530
