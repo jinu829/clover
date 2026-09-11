@@ -101,15 +101,24 @@ def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="m
         return
     h, w, _ = image.shape
 
-    options = PoseLandmarkerOptions( #모델 기본 설정
-        base_options=BaseOptions(model_asset_path=MODEL_PATH), #모델은 위 MODEL_PATH에 지정해둔 모델(구글에서 가져온 Landmark모델)사용
-        running_mode=VisionRunningMode.IMAGE, #작동 대상 파일은 이미지로
-        output_segmentation_masks=True, #세그멘테이션 마스크 출력
+    # mediapipe는 너비/높이가 4의 배수가 아닌 이미지에서 세그멘테이션 마스크를
+    # 생성할 때 내부 stride 정렬이 깨져 네이티브 크래시
+    # (Check failed: 1 == ChannelSize())가 발생합니다. 오른쪽/아래쪽 가장자리를
+    # 복제해 4의 배수로 패딩하여 이를 피합니다.
+    pad_bottom, pad_right = (-h) % 4, (-w) % 4
+    if pad_bottom or pad_right:
+        image = cv2.copyMakeBorder(image, 0, pad_bottom, 0, pad_right, cv2.BORDER_REPLICATE)
+        h, w, _ = image.shape
+
+    options = PoseLandmarkerOptions(
+        base_options=BaseOptions(model_asset_path=MODEL_PATH),
+        running_mode=VisionRunningMode.IMAGE,
+        output_segmentation_masks=True,
     )
 
-    with PoseLandmarker.create_from_options(options) as landmarker: #PoseLandmarker.create_from_options(options)를 landmarker로 치환해서 사용한다. with 컨텍스트 매니저를 사용하여 추론이 끝난 뒤 C++ 네이티브 메모리 및 AI 모델 리소스를 자동으로 안전하게 해제(Close)합니다.
-        mp_image = mp.Image.create_from_file(image_path) #사용하는 이미지를 mediapipe에서 사용하는 mp.Image객체로 자동 변환
-        result = landmarker.detect(mp_image) #PoseLandmarkerResult객체를 result에 반환(이 객체는 33개 Landmark의 2D좌표를 가지고 있음.)
+    with PoseLandmarker.create_from_options(options) as landmarker:
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        result = landmarker.detect(mp_image)
 
     if not result.pose_landmarks:
         print("사람을 인식하지 못했습니다.")
@@ -290,3 +299,15 @@ if __name__ == "__main__":
         out_dir=args.out_dir,
         save_visualizations=not args.no_viz,
     )
+
+# 실행 방법(터미널에 해당 코드 순차적으로 입력)
+#py -3.13 -m venv .venv313
+#.venv313\Scripts\activate
+#pip install opencv-python mediapipe numpy
+#python exportnumberbymediapipe.py testdata/sample_person.jpg
+
+#여러 사진을 한꺼번에 돌리고 싶다면
+#python exportnumberbymediapipe.py testdata폴더경로 --out-dir measurements : 모든 사진에 대해 측정 결과 measurement생성
+"""Get-ChildItem measurements\*.json | ForEach-Object { #모든 measurement내의 사진에 대해서 createHuman파일을 돌림.
+    python createHuman.py $_.FullName --out "$($_.BaseName).mhm"
+}"""
