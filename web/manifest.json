@@ -1,11 +1,11 @@
 {
-    "name": "clover",
-    "short_name": "clover",
+    "name": "클로버 - 가상 피팅 쇼핑",
+    "short_name": "클로버",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#15C57E",
+    "theme_color": "#15C57E",
+    "description": "3D 아바타에 옷을 입혀보는 가상 피팅 쇼핑 앱",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

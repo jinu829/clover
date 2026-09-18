@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../models/product.dart';
+import '../state/app_state.dart';
+import 'product_detail_screen.dart';
+import 'cart_screen.dart';
 
 /// 홈 화면: 상단바 + 초록 배너 + 카테고리 + 인기 상품.
 /// 값이 바뀌는 게 없어서(그냥 보여주기만) StatelessWidget.
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onScan; // 스캔 탭으로 이동
+  final void Function(String category)? onCategory; // 쇼핑 탭으로 이동(카테고리 지정)
+  const HomeScreen({super.key, this.onScan, this.onCategory});
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +38,7 @@ class HomeScreen extends StatelessWidget {
                 const Spacer(),
                 _topIcon(Icons.search, 0),
                 _topIcon(Icons.notifications_none, 2),
-                _topIcon(Icons.shopping_bag_outlined, 3),
+                _cartIcon(context),
                 _topIcon(Icons.person_outline, 0),
               ],
             ),
@@ -66,7 +71,7 @@ class HomeScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
-                          onPressed: () {},
+                          onPressed: onScan, // 스캔 탭으로 이동
                           icon: const Icon(Icons.camera_alt_outlined, size: 18),
                           label: const Text('스캔 시작', style: TextStyle(fontWeight: FontWeight.w700)),
                           style: ElevatedButton.styleFrom(
@@ -103,7 +108,10 @@ class HomeScreen extends StatelessWidget {
                 return Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 5),
-                    child: Column(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => onCategory?.call(c.$1), // 이 카테고리로 쇼핑 이동
+                      child: Column(
                       children: [
                         Container(
                           height: 72,
@@ -123,6 +131,7 @@ class HomeScreen extends StatelessWidget {
                         const SizedBox(height: 8),
                         Text(c.$1, style: const TextStyle(fontSize: 13, color: AppColors.textDark)),
                       ],
+                      ),
                     ),
                   ),
                 );
@@ -150,7 +159,7 @@ class HomeScreen extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 itemCount: sampleProducts.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 14),
-                itemBuilder: (_, i) => _popularCard(sampleProducts[i]),
+                itemBuilder: (ctx, i) => _popularCard(ctx, sampleProducts[i]),
               ),
             ),
           ],
@@ -182,9 +191,45 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  // 장바구니 아이콘 (담긴 개수 뱃지 + 탭하면 장바구니로)
+  Widget _cartIcon(BuildContext context) {
+    return ListenableBuilder(
+      listenable: AppState.I,
+      builder: (context, _) {
+        final count = AppState.I.cartCount;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CartScreen()),
+              ),
+              icon: const Icon(Icons.shopping_bag_outlined, color: AppColors.textDark, size: 25),
+            ),
+            if (count > 0)
+              Positioned(
+                right: 4,
+                top: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                  child: Text('$count',
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
   // 인기 상품 카드 (가로 스크롤용)
-  Widget _popularCard(Product p) {
-    return Container(
+  Widget _popularCard(BuildContext context, Product p) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ProductDetailScreen(product: p)),
+      ),
+      child: Container(
       width: 150,
       decoration: BoxDecoration(
         color: Colors.white,
@@ -224,6 +269,7 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'main_shell.dart';
+import 'signup_screen.dart';
 
-/// 로그인 화면 (앱을 켜면 처음 보이는 화면).
-/// 비밀번호 가리기, 로그인 유지 체크처럼 "값이 바뀌는" 게 있어서 StatefulWidget.
+/// 로그인 화면. 입력 검증·비밀번호 토글이 있어 StatefulWidget.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -12,15 +12,42 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  bool _obscure = true; // 비밀번호 가리기 상태
-  bool _keepLogin = false; // 로그인 유지 체크 상태
+  final _emailCtrl = TextEditingController();
+  final _pwCtrl = TextEditingController();
+  bool _obscure = true;
+  bool _keepLogin = false;
+  String? _emailError; // 이메일 오류 문구 (null이면 정상)
+  String? _pwError; // 비밀번호 오류 문구
 
-  void _goToApp() {
-    // 로그인 버튼 -> 메인 화면(4탭)으로 이동.
-    // pushReplacement: 로그인 화면을 없애고 교체 (뒤로가기로 로그인으로 안 돌아옴)
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const MainShell()),
-    );
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _pwCtrl.dispose();
+    super.dispose();
+  }
+
+  void _login() {
+    final email = _emailCtrl.text.trim();
+    final pw = _pwCtrl.text;
+    setState(() {
+      // 이메일 검증
+      if (email.isEmpty) {
+        _emailError = '이메일을 입력하세요';
+      } else if (!email.contains('@') || !email.contains('.')) {
+        _emailError = '올바른 이메일 형식이 아니에요';
+      } else {
+        _emailError = null;
+      }
+      // 비밀번호 검증
+      _pwError = pw.isEmpty ? '비밀번호를 입력하세요' : null;
+    });
+
+    // 둘 다 통과하면 메인으로
+    if (_emailError == null && _pwError == null) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainShell()),
+      );
+    }
   }
 
   @override
@@ -32,8 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 28),
           child: Column(
             children: [
-              const SizedBox(height: 60),
-              // 클로버 로고 (초록 사각형 + 네잎클로버 이모지)
+              const SizedBox(height: 56),
               Container(
                 width: 92,
                 height: 92,
@@ -48,39 +74,35 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: const Center(child: Text('🍀', style: TextStyle(fontSize: 46))),
               ),
               const SizedBox(height: 20),
-              const Text(
-                '클로버',
-                style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: AppColors.textDark),
-              ),
+              const Text('클로버', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: AppColors.textDark)),
               const SizedBox(height: 8),
-              const Text(
-                '3D 스캔으로 완벽한 핏을 찾아보세요',
-                style: TextStyle(fontSize: 15, color: AppColors.textGray),
-              ),
-              const SizedBox(height: 44),
-              // 이메일 입력
+              const Text('3D 스캔으로 완벽한 핏을 찾아보세요', style: TextStyle(fontSize: 15, color: AppColors.textGray)),
+              const SizedBox(height: 40),
+              // 이메일
               _label('이메일'),
               const SizedBox(height: 8),
-              _inputField(hint: 'example@clover.com', icon: Icons.mail_outline),
-              const SizedBox(height: 20),
-              // 비밀번호 입력
+              _inputField(
+                controller: _emailCtrl,
+                hint: 'example@clover.com',
+                icon: Icons.mail_outline,
+                errorText: _emailError,
+              ),
+              const SizedBox(height: 16),
+              // 비밀번호
               _label('비밀번호'),
               const SizedBox(height: 8),
               _inputField(
+                controller: _pwCtrl,
                 hint: '••••••••',
                 icon: Icons.lock_outline,
                 obscure: _obscure,
+                errorText: _pwError,
                 suffix: IconButton(
-                  icon: Icon(
-                    _obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                    color: AppColors.textGray,
-                  ),
-                  // 눈 아이콘 누르면 가리기 <-> 보이기 토글
+                  icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: AppColors.textGray),
                   onPressed: () => setState(() => _obscure = !_obscure),
                 ),
               ),
-              const SizedBox(height: 16),
-              // 로그인 유지 / 비밀번호 찾기
+              const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -100,19 +122,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       const Text('로그인 유지', style: TextStyle(color: AppColors.textDark)),
                     ],
                   ),
-                  const Text(
-                    '비밀번호 찾기',
-                    style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600),
-                  ),
+                  const Text('비밀번호 찾기', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
                 ],
               ),
               const SizedBox(height: 24),
-              // 로그인 버튼 (가로 꽉 채움)
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _goToApp,
+                  onPressed: _login,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
@@ -122,16 +140,27 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: const Text('로그인', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
                 ),
               ),
-              const SizedBox(height: 24),
-              // "또는" 구분선
+              const SizedBox(height: 20),
               Row(
                 children: const [
                   Expanded(child: Divider()),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('또는', style: TextStyle(color: AppColors.textGray)),
-                  ),
+                  Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('또는', style: TextStyle(color: AppColors.textGray))),
                   Expanded(child: Divider()),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // 회원가입 링크
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('아직 회원이 아니신가요?', style: TextStyle(color: AppColors.textGray)),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const SignupScreen()),
+                    ),
+                    child: const Text('회원가입', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700)),
+                  ),
                 ],
               ),
               const SizedBox(height: 24),
@@ -142,29 +171,28 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // 입력창 위 라벨 (왼쪽 정렬 텍스트)
   Widget _label(String text) => Align(
         alignment: Alignment.centerLeft,
-        child: Text(
-          text,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textDark),
-        ),
+        child: Text(text, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textDark)),
       );
 
-  // 재사용 입력창
   Widget _inputField({
+    required TextEditingController controller,
     required String hint,
     required IconData icon,
     bool obscure = false,
     Widget? suffix,
+    String? errorText,
   }) {
     return TextField(
+      controller: controller,
       obscureText: obscure,
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(color: AppColors.textGray),
         prefixIcon: Icon(icon, color: AppColors.textGray),
         suffixIcon: suffix,
+        errorText: errorText,
         filled: true,
         fillColor: Colors.white,
         contentPadding: const EdgeInsets.symmetric(vertical: 18),

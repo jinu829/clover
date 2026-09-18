@@ -1,0 +1,41 @@
+name: Deploy Flutter Web to GitHub Pages
+
+# 20260828_front 브랜치에 push하면 자동으로 빌드·배포된다.
+on:
+  push:
+    branches: [20260828_front]
+  workflow_dispatch: # 수동 실행도 가능
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      # base-href는 저장소 이름(clover)에 맞춤 → https://<계정>.github.io/clover/
+      - run: flutter build web --release --base-href /clover/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

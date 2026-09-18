@@ -6,7 +6,8 @@ import '../widgets/product_card.dart';
 /// 쇼핑 화면: 검색바 + 카테고리 칩 + 상품 그리드.
 /// 선택된 카테고리가 바뀌면 목록이 바뀌므로 StatefulWidget.
 class ShoppingScreen extends StatefulWidget {
-  const ShoppingScreen({super.key});
+  final String category; // 홈에서 넘어올 때 초기 카테고리
+  const ShoppingScreen({super.key, this.category = '전체'});
 
   @override
   State<ShoppingScreen> createState() => _ShoppingScreenState();
@@ -14,14 +15,26 @@ class ShoppingScreen extends StatefulWidget {
 
 class _ShoppingScreenState extends State<ShoppingScreen> {
   final List<String> _categories = const ['전체', '상의', '하의', '원피스', '아우터'];
-  String _selected = '전체'; // 현재 선택된 카테고리
+  late String _selected = widget.category; // 현재 선택된 카테고리
+  String _keyword = ''; // 검색어
+
+  // 홈에서 다른 카테고리로 다시 들어오면 반영
+  @override
+  void didUpdateWidget(covariant ShoppingScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.category != widget.category) {
+      setState(() => _selected = widget.category);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // 선택된 카테고리에 맞게 상품 걸러내기
-    final products = _selected == '전체'
-        ? sampleProducts
-        : sampleProducts.where((p) => p.category == _selected).toList();
+    // 카테고리 + 검색어 둘 다 만족하는 상품만 걸러내기
+    final products = sampleProducts.where((p) {
+      final catOk = _selected == '전체' || p.category == _selected;
+      final kwOk = _keyword.isEmpty || p.name.contains(_keyword);
+      return catOk && kwOk;
+    }).toList();
 
     return Scaffold(
       backgroundColor: AppColors.scaffold,
@@ -70,15 +83,23 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
             // ── 검색바 ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-                child: Row(
-                  children: const [
-                    Icon(Icons.search, color: AppColors.textGray),
-                    SizedBox(width: 10),
-                    Text('상품을 검색하세요', style: TextStyle(color: AppColors.textGray)),
-                  ],
+              child: TextField(
+                onChanged: (v) => setState(() => _keyword = v), // 입력할 때마다 필터
+                decoration: InputDecoration(
+                  hintText: '상품을 검색하세요',
+                  hintStyle: const TextStyle(color: AppColors.textGray),
+                  prefixIcon: const Icon(Icons.search, color: AppColors.textGray),
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.primary, width: 1.4),
+                  ),
                 ),
               ),
             ),

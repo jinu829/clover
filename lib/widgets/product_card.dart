@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../models/product.dart';
+import '../screens/product_detail_screen.dart';
 
 /// 상품 카드 하나. (쇼핑 화면 그리드에서 반복해서 사용)
 /// 이렇게 부품(위젯)으로 한 번 만들어두면 13개든 100개든 재사용할 수 있다.
@@ -10,7 +11,11 @@ class ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ProductDetailScreen(product: product)),
+      ),
+      child: Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -114,6 +119,7 @@ class ProductCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
