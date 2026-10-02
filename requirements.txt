@@ -1,4 +1,0 @@
-mediapipe>=0.10.14
-numpy
-pillow
-scipy
