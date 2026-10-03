@@ -376,14 +376,25 @@ if __name__ == "__main__":
         save_visualizations=not args.no_viz,
     )
 
-# 실행 방법(터미널에 해당 코드 순차적으로 입력)
-#py -3.13 -m venv .venv313
-#.venv313\Scripts\activate
-#pip install opencv-python mediapipe numpy
-#python exportnumberbymediapipe.py testdata/sample_person.jpg
-
-#여러 사진을 한꺼번에 돌리고 싶다면
-#python exportnumberbymediapipe.py testdata폴더경로 --out-dir measurements : 모든 사진에 대해 측정 결과 measurement생성
-"""Get-ChildItem measurements\*.json | ForEach-Object { #모든 measurement내의 사진에 대해서 createHuman파일을 돌림.
-    python createHuman.py $_.FullName --out "$($_.BaseName).mhm"
-}"""
+# 실행 방법 (Windows PowerShell, create_avatar 폴더에서 순서대로 입력)
+# 0) 처음 한 번만
+#    py -3.13 -m venv .venv313
+#    .venv313\Scripts\activate
+#    pip install opencv-python mediapipe numpy
+#    models\pose_landmarker_lite.task 파일이 있어야 함 (없으면 MODEL_PATH 위 주석의 주소에서 받기)
+#
+# 1) 사진 한 장
+#    python exportnumberbymediapipe.py testdata\sample_person.jpg --height 172
+#    --height에는 그 사람의 실제 키(cm)를 꼭 넣을 것 (생략하면 175cm로 계산되어 모든 둘레가 틀어짐)
+#
+# 2) 폴더 안 사진 전체
+#    python exportnumberbymediapipe.py testdata --height 172 --out-dir measurements
+#    폴더 안 사진은 모두 같은 키로 계산되므로, 키가 다른 사람은 사진별로 따로 실행
+#
+# 결과: measurements\<사진이름>.json (측정값) + measurements\<사진이름>_viz.jpg (측정선 확인용)
+#    _viz.jpg에서 색깔 선이 몸 윤곽 양 끝에 맞는지 확인할 것.
+#    맨 윗줄 "Scale ... (landmarks)"로 나오면 마스크로 키를 못 잰 것이라 오차가 큼 (정상은 "(mask)")
+#
+# 촬영 팁: 정면, 머리부터 발끝까지 전부 보이게, 팔은 몸에서 살짝 떼고, 맨발에 몸에 붙는 옷
+#
+# 다음 단계: JSON -> .mhm 아바타 만들기는 createHuman.py 맨 아래 실행 방법 참고

@@ -283,3 +283,28 @@ if __name__ == "__main__":
 
     build_avatar(args.measurements_path, args.out, gender=args.gender, age_years=args.age,
                  muscle=args.muscle, mh_src=args.mh_src)
+
+
+# 실행 방법 (Windows PowerShell, create_avatar 폴더에서 순서대로 입력)
+# 0) 처음 한 번만: MakeHuman 소스 받기 + 패키지 설치
+#    git clone --depth 1 https://github.com/makehumancommunity/makehuman.git C:\makehuman-src
+#    .venv313\Scripts\activate          (exportnumberbymediapipe.py에서 만든 가상환경)
+#    pip install numpy PyQt5 PyOpenGL
+#    매번 --mh-src를 쓰기 싫으면:  $env:MAKEHUMAN_SRC = "C:\makehuman-src\makehuman"
+#
+# 1) 측정값 JSON 하나로 아바타 만들기
+#    python createHuman.py measurements\sample_person.json --out sample_person.mhm --gender male --mh-src C:\makehuman-src\makehuman
+#    옵션: --gender male|female (기본 male), --age 나이(기본 25), --muscle 근육 0~1(기본 0.5)
+#
+# 2) measurements 폴더의 JSON 전부 (MAKEHUMAN_SRC를 설정해 둔 경우)
+#    Get-ChildItem measurements\*.json | ForEach-Object { python createHuman.py $_.FullName --out "$($_.BaseName).mhm" --gender female }
+#    성별이 섞여 있으면 성별별로 나눠서 실행
+#
+# 결과: <이름>.mhm 생성 (MAKEHUMAN_MODELS_DIR 폴더가 있으면 그곳에도 복사).
+#    콘솔에 "MakeHuman 측정값 / 목표값" 표가 나오고, 목표에 못 미친 부위는 "경고"로 표시됨.
+#    경고가 나오면 대개 측정값 자체가 비정상이니 해당 사진의 _viz.jpg를 확인할 것.
+#
+# 3) MakeHuman 프로그램 안에서 실행하려면: 이 파일 맨 위 설명의 2) 참고
+#
+# 다음 단계: Blender로 불러오기
+#    blender --background --python importToBlender.py -- . --out avatars
