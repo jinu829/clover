@@ -12,8 +12,8 @@ createHuman.py가 만든 .mhm 아바타를 Blender로 자동으로 불러오는 
 유지한 채 전체를 확대/축소한다.
 
 실행 방법 1) 터미널에서 한 번에 (사람마다 <이름>.blend 저장)
-  blender --background --python importToBlender.py -- . --out avatars
-  blender --background --python importToBlender.py -- sample_person.mhm --out avatars --rig game_engine
+  blender --background --python importToBlender.py -- avatars --out avatars
+  blender --background --python importToBlender.py -- avatars/sample_person.mhm --out avatars --rig game_engine
 
 실행 방법 2) Blender의 Scripting 탭에서 이 파일을 열고 실행
   아래 DEFAULT_* 값을 바꿔서 실행하면, 현재 씬에 사람마다 컬렉션을 만들어
@@ -37,7 +37,7 @@ except NameError:
     SCRIPT_DIR = os.getcwd()
 
 # Scripting 탭에서 실행할 때 쓰는 기본값 (명령줄 인자가 있으면 무시됨)
-DEFAULT_INPUT = SCRIPT_DIR                                     # .mhm 파일 또는 폴더
+DEFAULT_INPUT = os.path.join(SCRIPT_DIR, "avatars")             # .mhm 파일 또는 폴더 (createHuman.py가 저장하는 곳)
 DEFAULT_MEASUREMENTS_DIR = os.path.join(SCRIPT_DIR, "measurements")  # 사진별 측정 JSON 폴더
 DEFAULT_FBX_DIR = None                                          # None이면 .mhm과 같은 폴더에서 .fbx를 찾음
 
@@ -284,7 +284,7 @@ def _parse_args():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser(description=".mhm 아바타를 Blender로 불러옵니다.")
     parser.add_argument("input_path", nargs="?", default=DEFAULT_INPUT,
-                        help=".mhm 파일 또는 .mhm이 들어있는 폴더 (기본값: 이 스크립트 폴더)")
+                        help=".mhm 파일 또는 .mhm이 들어있는 폴더 (기본값: 이 스크립트 옆 avatars 폴더)")
     parser.add_argument("--out", default=None,
                         help="사람마다 <이름>.blend 를 저장할 폴더. 생략하면 현재 씬에 모두 불러옴")
     parser.add_argument("--source", choices=["auto", "mpfb", "fbx"], default="auto",
