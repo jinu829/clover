@@ -9,17 +9,35 @@ import os
 # https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "pose_landmarker_lite.task")
 
-# 신체 부위별 정면 너비 -> 단면 타원 둘레 환산 시 사용하는 단반경(b) 비율.
-# 실제 사람 몸은 정면에서 보이는 너비(a)보다 옆에서 본 두께(b)가 얇으므로,
-# 부위별 통계적인 두께/너비 비율을 곱해 근사합니다.
-DEPTH_RATIO = {
-    "chest": 0.75,
-    "waist": 0.80,
-    "hip": 0.90,
-    "thigh": 0.85,
+# 신체 부위별 "둘레 / 정면 폭" 비율. 정면 사진에서는 폭만 보이므로 이 비율을 곱해 둘레를 구한다.
+# 타원 단면 가정은 실제 몸통(타원보다 각진 단면)보다 둘레를 9~13% 작게 내서, 대신
+# MakeHuman 메시 72개(성별 2 x 체중 6 x 근육 3 x 키 2)에서 Measure 탭 ruler 둘레를
+# 같은 높이의 정면 폭으로 나눈 평균값을 쓴다. createHuman.py의 피팅도 같은 ruler 기준이라
+# 두 단계의 cm 정의가 일치한다. (체형 간 표준편차 2~3%, 남녀 차이 3% 이내)
+CIRC_PER_WIDTH = {
+    "chest": 3.14,
+    "waist": 2.80,
+    "hip": 2.76,
+    "thigh": 3.39,
 }
 
-WAIST_INTERP_RATIO = 0.55        # 어깨~골반 사이 허리 위치 비율
+# 측정 높이는 MakeHuman Measure 탭 ruler 높이에 맞춘다 (렌더링한 MakeHuman 몸 8개에서
+# mediapipe 랜드마크 대비 위치를 재 평균낸 값). 피팅이 같은 ruler로 재므로 같은 곳을 재야 한다.
+WAIST_INTERP_RATIO = 0.69        # 어깨~골반 랜드마크 사이 허리 위치 비율 (편차 ±0.02)
+HIP_BELOW_HIP_LANDMARK = 0.05    # 엉덩이 둘레 높이: 골반 랜드마크에서 (골반~무릎) x 이 비율 아래 (편차 ±0.03)
+THIGH_INTERP_RATIO = 0.35        # 골반~무릎 사이 허벅지 위치 비율 (남 약 0.29, 여 약 0.42)
+
+# 가슴 둘레(MakeHuman bust-circ)는 유두 높이에서 잰다. mediapipe 어깨 랜드마크는
+# 어깨 관절 높이라 그대로 쓰면 삼각근까지 포함한 어깨 폭이 잡히므로, 어깨~골반
+# 랜드마크 사이에서 이 비율만큼 내려간 곳을 가슴 높이로 쓴다 (편차 ±0.02).
+CHEST_INTERP_RATIO = 0.28
+CHEST_TO_SHOULDER_WIDTH_RATIO = 0.90  # 가슴 폭 ≈ 어깨 랜드마크 간 거리의 약 90% (마스크 실패 시 폴백)
+ARM_HALF_WIDTH_RATIO = 0.15           # 위팔 반지름 ≈ 어깨 랜드마크 간 거리의 약 15%
+
+# 마스크가 없거나 이상할 때 쓰는 정수리 근사: 눈에서 (어깨-눈 거리) x 이 비율만큼 위
+HEAD_TOP_FROM_EYE_RATIO = 0.55
+# 마스크로 잰 키가 랜드마크 근사와 이 비율 이상 차이 나면 마스크를 믿지 않음
+MASK_HEIGHT_SANITY = 0.15
 
 # mediapipe의 LEFT_HIP/RIGHT_HIP 랜드마크는 골반 관절 중심에 찍혀
 # 실제 골반 실루엣(엉덩이) 폭보다 좁게 측정됩니다. 정면 사진으로 재검증한
@@ -37,13 +55,18 @@ SILHOUETTE_SEARCH_RADIUS = 14    # 랜드마크 지점이 마스크 밖일 때 �
 # 하나의 실루엣으로 이어져 폭이 실제보다 크게 잡히는데, 이 한도로 그런
 # 오염된 확장을 차단하고 진짜 실루엣 경계(더 안쪽)만 반영한다.
 SILHOUETTE_TOLERANCE = 1.4
+# 엉덩이는 골반 랜드마크 폭 대비 실제 폭의 개인차(특히 여성)가 커서 한도를 넓힌다.
+# 팔/손은 arm_limits로 따로 잘라내므로 한도를 넓혀도 팔이 섞이지 않는다.
+SILHOUETTE_TOLERANCE_BY_PART = {"hip": 1.8}
 
 
-def _silhouette_width_at(mask, cx, cy, expected_half_width):
+def _silhouette_width_at(mask, cx, cy, expected_half_width, max_left=None, max_right=None,
+                         tolerance=SILHOUETTE_TOLERANCE):
     """세그멘테이션 마스크에서 (cx, cy) 지점을 포함하는 실루엣 구간의 좌/우
     경계와 폭(px)을 반환. 각 방향으로는 배경 픽셀을 만나거나 중심(cx)에서
     expected_half_width * SILHOUETTE_TOLERANCE 만큼 벌어질 때까지만 확장한다
     (팔 등이 그 높이의 실루엣에 붙어 폭을 부풀리는 것을 방지).
+    max_left/max_right를 주면 그 방향의 확장 한도를 더 좁힌다(팔 영역 제외용).
     (cx, cy)가 실루엣 밖이면 근처 픽셀에서 다시 탐색하고, 그래도 찾지
     못하면 None을 반환한다(호출부에서 폴백 근사 사용).
     """
@@ -67,23 +90,23 @@ def _silhouette_width_at(mask, cx, cy, expected_half_width):
 
         
     #탐색을 허용할 수 있는 최대 범위(옷 같은 걸로 인하여 세그멘테이션 마스크가 좌우로 비정상적으로 길어지는 걸 방지한다.)
-    max_reach = expected_half_width * SILHOUETTE_TOLERANCE
+    max_reach = expected_half_width * tolerance
+    reach_left = max_reach if max_left is None else min(max_reach, max_left)
+    reach_right = max_reach if max_right is None else min(max_reach, max_right)
 
     #기준점 x0를 중심으로 좌우 방향으로 폭을 넓혀가며 세그멘테이션 마스크 끝 지점을 파악하고, 좌우 좌표 위치와 폭을 반환하는 코드
     left = x0
-    while left > 0 and row[left - 1] and (center_x - (left - 1)) <= max_reach:
+    while left > 0 and row[left - 1] and (center_x - (left - 1)) <= reach_left:
         left -= 1
     right = x0
-    while right < w - 1 and row[right + 1] and ((right + 1) - center_x) <= max_reach:
+    while right < w - 1 and row[right + 1] and ((right + 1) - center_x) <= reach_right:
         right += 1
     return left, right, right - left    
 
 
-def _ellipse_circumference_cm(width_px, scale, depth_ratio):
-    """정면에서 측정한 폭(px)을 타원 단면 둘레(cm)로 환산 (라마누잔 근사식)"""
-    a = (width_px * scale) / 2  # 장반경 (정면 너비의 절반)
-    b = a * depth_ratio         # 단반경 (측면 두께 근사)
-    return math.pi * (3 * (a + b) - math.sqrt((3 * a + b) * (a + 3 * b)))
+def _circumference_cm(width_px, scale, part):
+    """정면에서 측정한 폭(px)을 둘레(cm)로 환산 (CIRC_PER_WIDTH 설명 참고)"""
+    return width_px * scale * CIRC_PER_WIDTH[part]
 
 
 def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="measurements.json",
@@ -136,16 +159,28 @@ def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="m
         lm = landmarks[landmark_id]
         return lm.x * w, lm.y * h
 
-    # 2. 픽셀-cm 환산 비율 (Scale) 계산 : 세그멘테이션 마스크를 사용한 추출이 제대로 되지 않았을 때 아래 계산 결과를 사용
-    # 정수리 추정(코에서 눈 높이만큼 위로 연장)부터 발뒤꿈치까지의 픽셀 높이 계산
-    _, nose_y = px(PoseLandmark.NOSE.value)
-    _, eye_y = px(PoseLandmark.LEFT_EYE.value)
-    top_head_y = nose_y - (nose_y - eye_y) * 2  # 대략적인 정수리 위치
-    _, left_heel_y = px(PoseLandmark.LEFT_HEEL.value)
-    _, right_heel_y = px(PoseLandmark.RIGHT_HEEL.value)
-    heel_y = max(left_heel_y, right_heel_y)
+    # 2. 픽셀-cm 환산 비율 (Scale) 계산
+    # 랜드마크 근사: 정수리는 눈에서 (어깨-눈 거리)의 일정 비율 위, 바닥은 발뒤꿈치/발끝 중 낮은 쪽
+    eye_y = (px(PoseLandmark.LEFT_EYE.value)[1] + px(PoseLandmark.RIGHT_EYE.value)[1]) / 2
+    sh_y = (px(PoseLandmark.LEFT_SHOULDER.value)[1] + px(PoseLandmark.RIGHT_SHOULDER.value)[1]) / 2
+    top_head_y = eye_y - (sh_y - eye_y) * HEAD_TOP_FROM_EYE_RATIO
+    floor_y = max(px(lm_id.value)[1] for lm_id in (PoseLandmark.LEFT_HEEL, PoseLandmark.RIGHT_HEEL,
+                                                    PoseLandmark.LEFT_FOOT_INDEX, PoseLandmark.RIGHT_FOOT_INDEX))
+    landmark_pixel_height = floor_y - top_head_y
 
-    pixel_height = heel_y - top_head_y
+    # 마스크 우선: 몸 실루엣의 맨 위(머리카락 포함)~맨 아래(발바닥) 행. 랜드마크 근사보다 훨씬 정확하다.
+    # (신발/높은 머리 모양은 그만큼 키에 더해지므로 맨발·평소 머리로 찍은 사진이 가장 정확)
+    pixel_height = landmark_pixel_height
+    scale_source = "landmarks"
+    if mask is not None:
+        body_rows = np.where((mask > SEGMENTATION_THRESHOLD).sum(axis=1) >= 3)[0]
+        if body_rows.size:
+            mask_pixel_height = body_rows[-1] - body_rows[0] + 1
+            if abs(mask_pixel_height / landmark_pixel_height - 1) <= MASK_HEIGHT_SANITY:
+                pixel_height = mask_pixel_height
+                scale_source = "mask"
+    if scale_source == "landmarks":
+        print("경고: 마스크로 키를 잴 수 없어 랜드마크 근사를 사용합니다 (스케일 오차가 커질 수 있음)")
     scale = real_height_cm / pixel_height  # 픽셀당 cm
 
     # 3. 어깨/골반 좌우 랜드마크로 각 부위의 폭(px)과 중심 좌표 추정
@@ -164,16 +199,51 @@ def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="m
     waist_cx = shoulder_cx + (hip_cx - shoulder_cx) * WAIST_INTERP_RATIO
     waist_cy = shoulder_cy + (hip_cy - shoulder_cy) * WAIST_INTERP_RATIO
 
-    # 오른쪽 허벅지 (골반 ~ 무릎 사이 상위 20% 지점), 폭은 보정된 골반 폭 비례로 근사
+    # 가슴: 어깨 관절이 아니라 유두 높이 (CHEST_INTERP_RATIO 설명 참고)
+    chest_cx = shoulder_cx + (hip_cx - shoulder_cx) * CHEST_INTERP_RATIO
+    chest_cy = shoulder_cy + (hip_cy - shoulder_cy) * CHEST_INTERP_RATIO
+    chest_width_px = shoulder_width_px * CHEST_TO_SHOULDER_WIDTH_RATIO
+
+    # 팔이 몸통 옆에 붙어 있으면 그 높이의 마스크가 팔/손까지 이어지므로,
+    # 어깨-팔꿈치-손목 선 위의 팔 중심에서 팔 반지름만큼 안쪽까지만 몸통으로 인정한다.
+    arm_half_px = shoulder_width_px * ARM_HALF_WIDTH_RATIO
+    arms = {}
+    for side, (sh, el, wr) in {
+        "left": (PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_ELBOW, PoseLandmark.LEFT_WRIST),
+        "right": (PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST),
+    }.items():
+        arms[side] = [px(sh.value), px(el.value), px(wr.value)]
+
+    def arm_x_at(points, y):
+        """팔 꺾은선(어깨-팔꿈치-손목)이 높이 y를 지나는 x. 손목보다 아래면 손목 x(손)"""
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            if min(y0, y1) <= y <= max(y0, y1) and y1 != y0:
+                return x0 + (x1 - x0) * (y - y0) / (y1 - y0)
+        return points[-1][0] if y > points[-1][1] else points[0][0]
+
+    def arm_limits(cx, cy, min_reach):
+        """(cx, cy)에서 좌/우로 몸통으로 인정할 최대 거리(px)"""
+        reach = {side: max(abs(arm_x_at(points, cy) - cx) - arm_half_px, min_reach)
+                 for side, points in arms.items()}
+        # 이미지 좌표에서 왼쪽(x 작은 쪽)이 어느 팔인지 판정
+        if arms["left"][0][0] < arms["right"][0][0]:
+            return {"max_left": reach["left"], "max_right": reach["right"]}
+        return {"max_left": reach["right"], "max_right": reach["left"]}
+
+    # 오른쪽 허벅지 (골반 ~ 무릎 사이 THIGH_INTERP_RATIO 지점), 폭은 보정된 골반 폭 비례로 근사
     r_knee_x, r_knee_y = px(PoseLandmark.RIGHT_KNEE.value)
-    thigh_cx = r_hip_x + (r_knee_x - r_hip_x) * 0.2
-    thigh_cy = r_hip_y + (r_knee_y - r_hip_y) * 0.2
+    thigh_cx = r_hip_x + (r_knee_x - r_hip_x) * THIGH_INTERP_RATIO
+    thigh_cy = r_hip_y + (r_knee_y - r_hip_y) * THIGH_INTERP_RATIO
+
+    # 엉덩이: 골반 랜드마크보다 약간 아래(엉덩이가 가장 튀어나온 높이)
+    l_knee_y = px(PoseLandmark.LEFT_KNEE.value)[1]
+    hip_measure_cy = hip_cy + ((l_knee_y + r_knee_y) / 2 - hip_cy) * HIP_BELOW_HIP_LANDMARK
     thigh_width_px = hip_width_corrected_px * THIGH_TO_HIP_WIDTH_RATIO
 
     regions = {
-        "chest": (shoulder_cx, shoulder_cy, shoulder_width_px),
+        "chest": (chest_cx, chest_cy, chest_width_px),
         "waist": (waist_cx, waist_cy, waist_width_px),
-        "hip": (hip_cx, hip_cy, hip_width_corrected_px),
+        "hip": (hip_cx, hip_measure_cy, hip_width_corrected_px),
         "thigh": (thigh_cx, thigh_cy, thigh_width_px),
     }
 
@@ -181,8 +251,11 @@ def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="m
     circumferences = {}
     measured_lines = {}
     for name, (cx, cy, fallback_width_px) in regions.items():
+        # 팔 영역 제외 (허벅지는 팔과 겹치지 않으므로 제외)
+        limits = arm_limits(cx, cy, fallback_width_px * 0.25) if name != "thigh" else {}
         silhouette = (
-            _silhouette_width_at(mask, cx, cy, fallback_width_px / 2)
+            _silhouette_width_at(mask, cx, cy, fallback_width_px / 2,
+                                 tolerance=SILHOUETTE_TOLERANCE_BY_PART.get(name, SILHOUETTE_TOLERANCE), **limits)
             if mask is not None else None
         )
         if silhouette is not None:
@@ -191,7 +264,7 @@ def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="m
             width_px = fallback_width_px
             left_x, right_x = int(cx - width_px / 2), int(cx + width_px / 2)
 
-        circumferences[name] = _ellipse_circumference_cm(width_px, scale, DEPTH_RATIO[name]) #둘레 길이 저장
+        circumferences[name] = _circumference_cm(width_px, scale, name) #둘레 길이 저장
         measured_lines[name] = (int(cy), left_x, right_x)
 
     # --- 시각화 (이미지에 랜드마크, 측정선, 텍스트 그리기) ---
@@ -208,7 +281,7 @@ def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="m
         "thigh": (255, 0, 255),  # 보라색
     }
 
-    cv2.putText(draw_img, f"Scale: {scale:.3f} cm/px", (20, 30),
+    cv2.putText(draw_img, f"Scale: {scale:.3f} cm/px ({scale_source})", (20, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
     text_y = 60
@@ -231,11 +304,14 @@ def calculate_body_measurements(image_path, real_height_cm=175.0, export_path="m
     measurements = {
         "real_height_cm": real_height_cm,
         "scale_cm_per_px": scale,
+        "scale_source": scale_source,
         "chest_circumference_cm": circumferences.get("chest"),
         "waist_circumference_cm": circumferences.get("waist"),
         "hip_circumference_cm": circumferences.get("hip"),
         "thigh_circumference_cm": circumferences.get("thigh"),
     }
+    # numpy 숫자형은 json으로 저장할 수 없으므로 파이썬 float로 변환
+    measurements = {k: (float(v) if isinstance(v, (int, float, np.floating)) else v) for k, v in measurements.items()}
     with open(export_path, "w", encoding="utf-8") as f:
         json.dump(measurements, f, ensure_ascii=False, indent=2)
     print(f"측정값을 저장했습니다: {export_path}")
