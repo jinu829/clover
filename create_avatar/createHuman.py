@@ -12,7 +12,7 @@ MakeHuman 자체 측정 기준(Measure 탭의 ruler, 키는 getHeightCm)으로 �
    git clone https://github.com/makehumancommunity/makehuman.git
    pip install numpy PyQt5 PyOpenGL
    python createHuman.py measurements/A.json --gender male --mh-src <clone경로>/makehuman
-   -> avatars/A.mhm 생성
+   -> models_mhm/A.mhm 생성
 
 2) MakeHuman 프로그램 안에서 (Utilities > Shell 탭에 입력)
    import sys; sys.path.append(r"<createHuman.py가 있는 폴더>")
@@ -25,8 +25,9 @@ import shutil
 import sys
 
 MAKEHUMAN_MODELS_DIR = r"C:\Users\enjoyer\Documents\makehuman\v1py3"
-MAKEHUMAN_SRC_DIR = os.environ.get("MAKEHUMAN_SRC", "")
-DEFAULT_OUT_DIR = "avatars"  # 만들어진 .mhm을 모아 두는 폴더 (importToBlender.py가 여기서 읽음)  # MakeHuman 소스의 makehuman/ 폴더 (makehuman.py가 있는 곳)
+MAKEHUMAN_SRC_DIR = os.environ.get("MAKEHUMAN_SRC", "")  # MakeHuman 소스의 makehuman/ 폴더 (makehuman.py가 있는 곳)
+# 만들어진 .mhm을 모아 두는 폴더 (importToBlender.py가 여기서 읽음). 실행 위치와 상관없이 이 파일 옆 models_mhm/
+DEFAULT_OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models_mhm")
 
 # 측정 JSON 키 -> MakeHuman 둘레 모디파이어 (Measure 탭 ruler 이름과 동일)
 CIRC_MODIFIERS = {
@@ -252,7 +253,7 @@ def resolve_output_path(measurements_path, output_path=None, out_dir=DEFAULT_OUT
 def build_avatar(measurements_path="measurements.json", output_path=None, out_dir=DEFAULT_OUT_DIR,
                  gender="male", age_years=25.0, muscle=0.5, mh_src=MAKEHUMAN_SRC_DIR):
     """measurements_path의 측정값(JSON)으로 아바타를 피팅해 .mhm을 생성.
-    저장 위치는 resolve_output_path 참고 (기본: avatars/<JSON 이름>.mhm).
+    저장 위치는 resolve_output_path 참고 (기본: models_mhm/<JSON 이름>.mhm).
 
     exportnumberbymediapipe.py를 여러 사진에 대해 실행하면 사진별로
     <이름>.json 파일이 생기는데, measurements_path에 원하는 사진의 JSON을
@@ -291,7 +292,7 @@ if __name__ == "__main__":
     parser.add_argument("--out", default=None,
                         help="출력 .mhm 파일 이름 또는 경로 (기본값: JSON 이름.mhm). 이름만 주면 --out-dir 안에 저장")
     parser.add_argument("--out-dir", default=DEFAULT_OUT_DIR,
-                        help=f".mhm을 모아 둘 폴더 (기본값: {DEFAULT_OUT_DIR}, 없으면 자동 생성)")
+                        help=".mhm을 모아 둘 폴더 (기본값: create_avatar/models_mhm, 없으면 자동 생성)")
     parser.add_argument("--gender", choices=sorted(GENDER_VALUES), default="male", help="성별 (기본값: male)")
     parser.add_argument("--age", type=float, default=25.0, help="나이(세), 기본값 25")
     parser.add_argument("--muscle", type=float, default=0.5, help="근육 매크로 0~1, 기본값 0.5(보통)")
@@ -304,6 +305,7 @@ if __name__ == "__main__":
 
 
 # 실행 방법 (Windows PowerShell, create_avatar 폴더에서 순서대로 입력)
+# 보통은 exportnumberbymediapipe.py가 측정 뒤 이 파일을 자동으로 실행한다. 아래는 따로 돌릴 때.
 # 0) 처음 한 번만: MakeHuman 소스 받기 + 패키지 설치
 #    git clone --depth 1 https://github.com/makehumancommunity/makehuman.git C:\makehuman-src
 #    .venv313\Scripts\activate          (exportnumberbymediapipe.py에서 만든 가상환경)
@@ -312,20 +314,21 @@ if __name__ == "__main__":
 #
 # 1) 측정값 JSON 하나로 아바타 만들기
 #    python createHuman.py measurements\sample_person.json --gender male --mh-src C:\makehuman-src\makehuman
-#    -> avatars\sample_person.mhm 생성 (avatars 폴더는 자동으로 만들어짐)
+#    -> models_mhm\sample_person.mhm 생성 (models_mhm 폴더는 자동으로 만들어짐)
 #    다른 폴더에 모으려면 --out-dir 폴더이름, 파일 이름을 바꾸려면 --out 이름.mhm
 #    옵션: --gender male|female (기본 male), --age 나이(기본 25), --muscle 근육 0~1(기본 0.5)
 #
 # 2) measurements 폴더의 JSON 전부 (MAKEHUMAN_SRC를 설정해 둔 경우)
 #    Get-ChildItem measurements\*.json | ForEach-Object { python createHuman.py $_.FullName --gender female }
-#    -> avatars 폴더에 사진 이름별 .mhm이 모임
+#    -> models_mhm 폴더에 사진 이름별 .mhm이 모임
 #    성별이 섞여 있으면 성별별로 나눠서 실행
 #
-# 결과: avatars\<이름>.mhm 생성 (MAKEHUMAN_MODELS_DIR 폴더가 있으면 그곳에도 복사).
+# 결과: models_mhm\<이름>.mhm 생성 (MAKEHUMAN_MODELS_DIR 폴더가 있으면 그곳에도 복사).
 #    콘솔에 "MakeHuman 측정값 / 목표값" 표가 나오고, 목표에 못 미친 부위는 "경고"로 표시됨.
 #    경고가 나오면 대개 측정값 자체가 비정상이니 해당 사진의 _viz.jpg를 확인할 것.
 #
 # 3) MakeHuman 프로그램 안에서 실행하려면: 이 파일 맨 위 설명의 2) 참고
 #
 # 다음 단계: Blender로 불러오기
-#    blender --background --python importToBlender.py -- avatars --out avatars
+#    blender --background --python importToBlender.py -- models_mhm --out avatars
+#    (exportnumberbymediapipe.py로 실행하면 이 단계부터 얼굴 합치기까지 자동으로 이어짐)
