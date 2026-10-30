@@ -19,6 +19,8 @@ import subprocess
 import sys
 import time
 
+import createHuman  # MakeHuman 소스 위치 확인용 (createHuman 맨 위 import는 표준 라이브러리뿐)
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
 
@@ -116,8 +118,7 @@ def make_mhm(json_path, stem, opts):
     cmd = [sys.executable, os.path.join(SCRIPT_DIR, "createHuman.py"), json_path,
            "--out-dir", MODELS_MHM_DIR, "--gender", opts.gender,
            "--age", str(opts.age), "--muscle", str(opts.muscle)]
-    if opts.mh_src:
-        cmd += ["--mh-src", opts.mh_src]
+    cmd += ["--mh-src", opts.mh_src]
     started_at = time.time()
     if _run(cmd) and _made(mhm_path, started_at):
         return mhm_path
@@ -173,6 +174,14 @@ def run_pipeline(measured, measurements_dir, opts):
         print("측정에 성공한 사진이 없어 파이프라인을 멈춥니다.")
         return {}
     single_person = len(measured) == 1
+
+    mh_src = createHuman.find_makehuman_src(opts.mh_src)
+    if not mh_src:
+        print("\n" + createHuman.makehuman_src_help(opts.mh_src))
+        print("\n측정 결과는 저장돼 있으니, 위처럼 준비한 뒤 같은 명령을 다시 실행하면 됩니다.")
+        return {stem: "중단: MakeHuman 소스 없음" for stem in stems}
+    opts.mh_src = mh_src
+    print(f"MakeHuman 소스: {mh_src}")
 
     blender = find_blender(opts.blender)
     if not blender:
@@ -236,7 +245,7 @@ def add_pipeline_arguments(parser):
     group.add_argument("--age", type=float, default=25.0, help="createHuman.py 나이 (기본 25)")
     group.add_argument("--muscle", type=float, default=0.5, help="createHuman.py 근육 0~1 (기본 0.5)")
     group.add_argument("--mh-src", default=os.environ.get("MAKEHUMAN_SRC", ""),
-                       help="MakeHuman 소스의 makehuman/ 폴더 (기본: 환경변수 MAKEHUMAN_SRC)")
+                       help="MakeHuman 소스의 makehuman/ 폴더 (기본: 환경변수 MAKEHUMAN_SRC, 없으면 C:\\makehuman-src 등에서 자동 탐색)")
     group.add_argument("--blender", default=None,
                        help="blender 실행 파일 경로 (기본: 환경변수 BLENDER, PATH, 기본 설치 위치 순서로 찾음)")
     group.add_argument("--heads-dir", default=HEADS_DIR,

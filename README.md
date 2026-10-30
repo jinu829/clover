@@ -34,7 +34,7 @@ flowchart LR
 | 필요한 것 | 쓰는 단계 | 설치 |
 | --- | --- | --- |
 | Python 3.13 가상환경 + mediapipe | 1, 2, 3 | 아래 명령 (3단계 패키지도 같은 가상환경에 설치) |
-| MakeHuman 소스 | 2 | `git clone --depth 1 https://github.com/makehumancommunity/makehuman.git C:\makehuman-src` |
+| MakeHuman 소스 | 2 | `git clone --depth 1 https://github.com/makehumancommunity/makehuman.git C:\makehuman-src` (이 위치면 자동으로 찾음) |
 | KeenTools API 키 | 3 | `keentools_3d/.env`에 `KEENTOOLS_API_KEY=...` (없으면 `heads/<이름>.zip`을 직접 준비하거나 `--skip-face`) |
 | Blender 4.x 이상 + MPFB2 애드온 | 4, 5 | Blender의 Get Extensions에서 MPFB 설치. 기본 위치가 아니면 `$env:BLENDER = "...\blender.exe"` |
 
@@ -43,7 +43,8 @@ cd create_avatar
 py -3.13 -m venv .venv313
 .venv313\Scripts\activate
 pip install opencv-python mediapipe numpy PyQt5 PyOpenGL
-$env:MAKEHUMAN_SRC = "C:\makehuman-src\makehuman"   # createHuman.py가 MakeHuman 소스를 찾는 곳
+# MakeHuman 소스를 C:\makehuman-src 가 아닌 곳에 받았다면 위치를 알려 줌 (makehuman.py가 있는 폴더)
+# $env:MAKEHUMAN_SRC = "D:\내폴더\makehuman-src\makehuman"
 
 cd ..\keentools_3d
 pip install -r requirements.txt
@@ -73,7 +74,7 @@ python exportnumberbymediapipe.py testdata\sample_person.jpg --height 172 --gend
 | --- | --- | --- |
 | `--height` | 실제 키(cm) | 175 |
 | `--gender male\|female`, `--age`, `--muscle 0~1` | 2단계 몸 만들기 설정 | male, 25, 0.5 |
-| `--mh-src` | MakeHuman 소스의 `makehuman` 폴더 | 환경변수 `MAKEHUMAN_SRC` |
+| `--mh-src` | MakeHuman 소스의 `makehuman` 폴더 (클론 폴더를 줘도 됨) | 환경변수 `MAKEHUMAN_SRC`, 없으면 자동 탐색 |
 | `--blender` | blender 실행 파일 경로 | 자동 탐색 |
 | `--heads-dir` | `<이름>.zip` 머리 파일 폴더 | `create_avatar\heads` |
 | `--face-images` | 머리가 없을 때 KeenTools에 보낼 얼굴 사진 폴더 | `keentools_3d\input_images` |
@@ -98,6 +99,15 @@ python exportnumberbymediapipe.py testdata --height 172 --gender female
 - 2단계 콘솔에 "경고"가 나온 부위는 대개 1단계 측정이 잘못된 것입니다.
 - 5단계 콘솔의 "정렬: 얼굴 표면 평균 거리"가 1cm를 넘으면 경고가 나옵니다. 결과를 Blender에서 열어 확인하세요.
 - 촬영 팁: 머리부터 발끝까지 보이는 정면, 팔은 몸에서 살짝 떼고, 몸에 붙는 옷. 얼굴 사진은 정면 외에 옆모습·30° 사진을 함께 넣으면 코 높이와 턱 깊이가 더 정확해집니다.
+
+### 자주 나오는 오류
+
+| 메시지 | 해결 |
+| --- | --- |
+| `MakeHuman 소스를 찾지 못했습니다` / `MakeHuman 소스 폴더가 아닙니다` | MakeHuman 소스를 받지 않았거나 위치를 못 찾은 것입니다. `git clone --depth 1 https://github.com/makehumancommunity/makehuman.git C:\makehuman-src`로 받으면 자동으로 찾습니다. 다른 곳에 받았다면 `$env:MAKEHUMAN_SRC = "<클론 경로>\makehuman"` 또는 `--mh-src <클론 경로>`를 주세요. 측정 결과는 저장돼 있으니 준비 후 같은 명령을 다시 실행하면 됩니다. |
+| `Blender를 찾지 못했습니다` | `.mhm`까지만 만들어집니다. `--blender "C:\Program Files\Blender Foundation\Blender 4.2\blender.exe"`처럼 경로를 주거나 `$env:BLENDER`를 설정하세요. |
+
+자동 탐색 위치: `C:\makehuman-src`, `C:\makehuman`, `~\makehuman-src`, `~\makehuman`, 그리고 clover 폴더 안과 그 옆의 `makehuman-src` / `makehuman` (각각 그 안의 `makehuman\makehuman.py`까지 확인).
 
 ## 단계별로 따로 실행
 
