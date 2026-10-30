@@ -43,6 +43,9 @@ DEFAULT_FBX_DIR = None                                          # None이면 .mh
 
 SPACING_M = 1.0  # 한 씬에 여러 명을 불러올 때 사람 사이 간격(m)
 
+MPFB_INSTALL_HINT = ("  MPFB2 설치: Blender에서 Edit > Preferences > Get Extensions > 'MPFB' 검색 > Install,\n"
+                     "  Add-ons에서 MPFB가 켜져 있는지 확인 (자세한 방법은 README '자주 나오는 오류')")
+
 
 # ---------------------------------------------------------------------------
 # MPFB2 연결
@@ -191,6 +194,7 @@ def import_person(mhm_path, *, human_service, source, rig, measurements_dir, fbx
         return None
     if not use_mpfb and fbx_path is None:
         print(f"[{stem}] 건너뜀: MPFB2가 없고 {stem}.fbx 도 찾지 못했습니다.")
+        print(MPFB_INSTALL_HINT)
         return None
 
     before = set(bpy.data.objects)
@@ -231,6 +235,20 @@ def collect_mhm_files(input_path):
             if name.lower().endswith(".mhm")
         )
     return [input_path]
+
+
+def check_mpfb():
+    """pipeline.py가 Blender 단계 전에 부르는 점검. 결과를 영어 표식 한 줄로 출력한다
+    (Blender 출력 인코딩과 상관없이 읽을 수 있게)."""
+    import addon_utils
+    installed = [mod.__name__ for mod in addon_utils.modules()
+                 if mod.__name__ == "mpfb" or mod.__name__.endswith(".mpfb")]
+    if _find_mpfb_human_service() is not None:
+        print("MPFB2_CHECK OK")
+    elif installed:
+        print("MPFB2_CHECK DISABLED " + ",".join(installed))  # 설치는 됐지만 켜지지 않음
+    else:
+        print("MPFB2_CHECK MISSING")
 
 
 def run(input_path, *, out_dir=None, source="auto", rig="PRESET",
@@ -297,11 +315,16 @@ def _parse_args():
                         help="FBX 대체 경로에서 <이름>.fbx 를 찾을 폴더 (기본값: .mhm과 같은 폴더)")
     parser.add_argument("--export-fbx", action="store_true",
                         help="--out 과 함께 쓰면 키를 맞춘 결과를 <이름>.fbx 로도 내보냄")
+    parser.add_argument("--check-mpfb", action="store_true",
+                        help="MPFB2가 설치·활성화돼 있는지만 확인하고 끝냄 (pipeline.py가 사용)")
     return parser.parse_args(argv)
 
 
 if __name__ == "__main__":
     args = _parse_args()
+    if args.check_mpfb:
+        check_mpfb()
+        sys.exit(0)
     run(
         args.input_path,
         out_dir=args.out,

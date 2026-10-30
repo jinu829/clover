@@ -84,6 +84,10 @@ def find_face_images(face_dir, stem, single_person):
     return None
 
 
+KEENTOOLS_KEY_HELP = ("KeenTools API 키가 없습니다. keentools_3d\\.env 파일에 KEENTOOLS_API_KEY=발급받은키 한 줄을 넣거나, "
+                      "PowerShell에서 $env:KEENTOOLS_API_KEY = \"발급받은키\" 로 설정하세요")
+
+
 def has_keentools_key():
     if os.environ.get("KEENTOOLS_API_KEY"):
         return True
@@ -132,11 +136,14 @@ def make_head(stem, opts, single_person):
         print(f"  머리 파일 사용: {existing}")
         return existing, None
     face_dir = find_face_images(opts.face_images, stem, single_person)
+    missing = []
     if not face_dir:
         hint = os.path.join(opts.face_images, stem) if not single_person else opts.face_images
-        return None, f"{opts.heads_dir}에 {stem}.zip이 없고, 얼굴 사진({hint})도 없습니다"
+        missing.append(f"얼굴 사진이 없습니다 ({hint}에 jpg/png를 넣으세요)")
     if not has_keentools_key():
-        return None, "KeenTools API 키가 없습니다 (keentools_3d/.env에 KEENTOOLS_API_KEY=...)"
+        missing.append(KEENTOOLS_KEY_HELP)
+    if missing:
+        return None, f"{opts.heads_dir}에 {stem}.zip이 없고, KeenTools로 만들 준비도 안 됐습니다:\n    - " + "\n    - ".join(missing)
     os.makedirs(opts.heads_dir, exist_ok=True)
     head_path = os.path.join(opts.heads_dir, f"{stem}.zip")
     cmd = [sys.executable, os.path.join(KEENTOOLS_DIR, "main.py"), "--images", face_dir, "--out", head_path]
@@ -144,6 +151,40 @@ def make_head(stem, opts, single_person):
     if _run(cmd, cwd=KEENTOOLS_DIR) and _made(head_path, started_at):
         return head_path, None
     return None, "KeenTools 머리 생성에 실패했습니다"
+
+
+def mpfb_install_help(blender, status):
+    """MPFB2가 없을 때 보여 줄 안내"""
+    if status.startswith("DISABLED"):
+        first = f"MPFB2가 설치돼 있지만 켜지지 않았습니다 ({blender})."
+    elif status == "MISSING":
+        first = f"이 Blender에 MPFB2(Blender용 MakeHuman 애드온)가 설치돼 있지 않습니다 ({blender})."
+    else:
+        first = f"MPFB2 설치 여부를 확인하지 못했습니다 ({blender}): {status}"
+    return (first + "\n"
+            "4·5단계(Blender로 불러오기, 얼굴 합치기)는 MPFB2가 있어야 해서 건너뜁니다.\n"
+            "  1) Blender를 열고 Edit > Preferences > Get Extensions\n"
+            "     (처음이면 'Allow Online Access'를 켭니다)\n"
+            "  2) 검색창에 MPFB 입력 -> Install\n"
+            "     인터넷 없이 설치하려면 https://extensions.blender.org/add-ons/mpfb/ 에서 zip을 받아\n"
+            "     Get Extensions 오른쪽 위 v 메뉴 > Install from Disk... 로 설치\n"
+            "  3) Preferences > Add-ons에서 MPFB가 체크(켜짐)돼 있는지 확인\n"
+            "  4) --blender로 실행하는 Blender와 같은 버전에 설치했는지 확인 (확장은 버전마다 따로 설치됨)\n"
+            "설치 후 같은 명령을 다시 실행하세요. (.mhm은 models_mhm에 이미 만들어져 있습니다)")
+
+
+def check_mpfb(blender):
+    """Blender를 한 번 띄워 MPFB2가 쓸 수 있는지 확인. "OK", "MISSING", "DISABLED ..." 또는 오류 설명을 돌려준다."""
+    cmd = _blender_cmd(blender, "importToBlender.py", ["--check-mpfb"])
+    try:
+        result = subprocess.run(cmd, cwd=SCRIPT_DIR, capture_output=True, timeout=300)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"Blender 실행 실패: {e}"
+    output = result.stdout.decode("utf-8", errors="replace")
+    for line in output.splitlines():
+        if line.startswith("MPFB2_CHECK "):
+            return line[len("MPFB2_CHECK "):].strip()
+    return f"점검 결과 없음 (종료 코드 {result.returncode})"
 
 
 def import_to_blender(blender, mhm_path, stem, measurements_dir):
@@ -191,6 +232,14 @@ def run_pipeline(measured, measurements_dir, opts):
     else:
         print(f"Blender: {blender}")
 
+    # 4·5단계는 MPFB2가 있어야 함 (4단계는 같은 이름의 .fbx가 있으면 대신 쓸 수 있음)
+    mpfb_status = check_mpfb(blender) if blender else None
+    mpfb_ok = mpfb_status == "OK"
+    if blender:
+        print("MPFB2: " + ("사용 가능" if mpfb_ok else "없음"))
+        if not mpfb_ok:
+            print("\n경고: " + mpfb_install_help(blender, mpfb_status))
+
     os.makedirs(MODELS_MHM_DIR, exist_ok=True)
     os.makedirs(AVATARS_DIR, exist_ok=True)
 
@@ -216,6 +265,10 @@ def run_pipeline(measured, measurements_dir, opts):
             summary[stem] = f"부분 완료: {mhm_path} (Blender 없음)"
             continue
 
+        if not mpfb_ok and not os.path.isfile(os.path.splitext(mhm_path)[0] + ".fbx"):
+            summary[stem] = f"부분 완료: {mhm_path} (MPFB2 없음, 4·5단계 건너뜀)"
+            continue
+
         print("[4/5] Blender로 불러오기 (importToBlender.py)")
         blend_path = import_to_blender(blender, mhm_path, stem, measurements_dir)
         if not blend_path:
@@ -227,6 +280,8 @@ def run_pipeline(measured, measurements_dir, opts):
             continue
 
         print("[5/5] 얼굴 합치기 (attachFace.py)")
+        if not mpfb_ok:
+            print("  경고: MPFB2가 없어 눈·눈썹·뼈대를 새 얼굴에 다시 맞추는 단계는 빠집니다.")
         if attach_face(blender, blend_path, head_path):
             summary[stem] = f"완료: {blend_path}"
         else:
@@ -235,6 +290,8 @@ def run_pipeline(measured, measurements_dir, opts):
     print("\n===== 결과 =====")
     for stem, result in summary.items():
         print(f"  {stem}: {result}")
+    if blender and not mpfb_ok:
+        print("\n" + mpfb_install_help(blender, mpfb_status))
     return summary
 
 
