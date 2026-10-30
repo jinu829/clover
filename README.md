@@ -106,6 +106,8 @@ python exportnumberbymediapipe.py testdata --height 172 --gender female
 | --- | --- |
 | `MakeHuman 소스를 찾지 못했습니다` / `MakeHuman 소스 폴더가 아닙니다` | MakeHuman 소스를 받지 않았거나 위치를 못 찾은 것입니다. `git clone --depth 1 https://github.com/makehumancommunity/makehuman.git C:\makehuman-src`로 받으면 자동으로 찾습니다. 다른 곳에 받았다면 `$env:MAKEHUMAN_SRC = "<클론 경로>\makehuman"` 또는 `--mh-src <클론 경로>`를 주세요. 측정 결과는 저장돼 있으니 준비 후 같은 명령을 다시 실행하면 됩니다. |
 | `Blender를 찾지 못했습니다` | `.mhm`까지만 만들어집니다. `--blender "C:\Program Files\Blender Foundation\Blender 4.2\blender.exe"`처럼 경로를 주거나 `$env:BLENDER`를 설정하세요. |
+| `MPFB2가 설치돼 있지 않습니다` / `MPFB2가 설치돼 있지만 켜지지 않았습니다` / `MPFB2가 없고 <이름>.fbx 도 찾지 못했습니다` | 파이프라인은 Blender 단계 전에 MPFB2를 확인하고, 없으면 `.mhm`까지만 만들고 4·5단계를 건너뜁니다. Blender에서 **Edit > Preferences > Get Extensions**(처음이면 Allow Online Access 켜기) → `MPFB` 검색 → Install. 인터넷 없이 설치하려면 https://extensions.blender.org/add-ons/mpfb/ 에서 zip을 받아 Get Extensions 오른쪽 위 메뉴의 **Install from Disk...**. 설치 후 **Add-ons**에서 MPFB가 켜져 있는지, `--blender`로 실행하는 것과 같은 버전의 Blender에 설치했는지 확인하세요. |
+| `KeenTools API 키가 없습니다` / `얼굴 사진이 없습니다` | 얼굴 합치기만 건너뛰고 몸은 끝까지 만듭니다. 키는 `keentools_3d\.env`에 `KEENTOOLS_API_KEY=발급받은키` 한 줄, 또는 `$env:KEENTOOLS_API_KEY = "발급받은키"`. 얼굴 사진은 `keentools_3d\input_images`에 넣습니다. 머리 zip이 이미 있으면 `create_avatar\heads\<이름>.zip`으로 두면 키 없이도 됩니다. |
 
 자동 탐색 위치: `C:\makehuman-src`, `C:\makehuman`, `~\makehuman-src`, `~\makehuman`, 그리고 clover 폴더 안과 그 옆의 `makehuman-src` / `makehuman` (각각 그 안의 `makehuman\makehuman.py`까지 확인).
 
