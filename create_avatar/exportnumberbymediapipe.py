@@ -361,40 +361,45 @@ def process_images(input_path, real_height_cm=175.0, out_dir="measurements", sav
 
 if __name__ == "__main__":
     import argparse
+    import pipeline
 
-    parser = argparse.ArgumentParser(description="사진(들)에서 신체 치수를 측정해 JSON으로 저장합니다.")
+    parser = argparse.ArgumentParser(
+        description="사진(들)에서 신체 치수를 측정하고, 이어서 .mhm 생성 -> Blender 불러오기 -> 얼굴 합치기까지 실행합니다.")
     parser.add_argument("input_path", help="이미지 파일 경로 또는 이미지가 들어있는 폴더 경로")
     parser.add_argument("--height", type=float, default=175.0, help="실제 키(cm), 기본값 175.0")
     parser.add_argument("--out-dir", default="measurements", help="측정 결과(JSON/시각화) 저장 폴더")
     parser.add_argument("--no-viz", action="store_true", help="시각화 이미지 저장 생략")
+    pipeline.add_pipeline_arguments(parser)
     args = parser.parse_args()
 
-    process_images(
+    results = process_images(
         args.input_path,
         real_height_cm=args.height,
         out_dir=args.out_dir,
         save_visualizations=not args.no_viz,
     )
+    if not args.measure_only:
+        pipeline.run_pipeline(results, args.out_dir, args)
 
 # 실행 방법 (Windows PowerShell, create_avatar 폴더에서 순서대로 입력)
-# 0) 처음 한 번만
-#    py -3.13 -m venv .venv313
-#    .venv313\Scripts\activate
-#    pip install opencv-python mediapipe numpy
+# 0) 처음 한 번만: 루트 README.md의 "처음 한 번만 준비" 참고 (가상환경, MakeHuman 소스, Blender + MPFB2)
 #    models\pose_landmarker_lite.task 파일이 있어야 함 (없으면 MODEL_PATH 위 주석의 주소에서 받기)
 #
-# 1) 사진 한 장
-#    python exportnumberbymediapipe.py testdata\sample_person.jpg --height 172
+# 1) 사진 한 장 -> 완성 아바타까지 한 번에
+#    python exportnumberbymediapipe.py testdata\sample_person.jpg --height 172 --gender male
 #    --height에는 그 사람의 실제 키(cm)를 꼭 넣을 것 (생략하면 175cm로 계산되어 모든 둘레가 틀어짐)
+#    결과: measurements\sample_person.json -> models_mhm\sample_person.mhm -> avatars\sample_person.blend
+#    얼굴: heads\sample_person.zip 이 있으면 그것을, 없으면 keentools_3d\input_images 사진으로 KeenTools 머리를 만들어 합침
 #
 # 2) 폴더 안 사진 전체
-#    python exportnumberbymediapipe.py testdata --height 172 --out-dir measurements
-#    폴더 안 사진은 모두 같은 키로 계산되므로, 키가 다른 사람은 사진별로 따로 실행
+#    python exportnumberbymediapipe.py testdata --height 172 --gender female
+#    폴더 안 사진은 모두 같은 키·성별로 계산되므로, 다른 사람은 사진별로 따로 실행
+#    얼굴 사진은 keentools_3d\input_images\<사진이름>\ 에 사람별로 넣음
+#
+# 3) 측정만 하려면 --measure-only, 얼굴 단계를 빼려면 --skip-face
 #
 # 결과: measurements\<사진이름>.json (측정값) + measurements\<사진이름>_viz.jpg (측정선 확인용)
 #    _viz.jpg에서 색깔 선이 몸 윤곽 양 끝에 맞는지 확인할 것.
 #    맨 윗줄 "Scale ... (landmarks)"로 나오면 마스크로 키를 못 잰 것이라 오차가 큼 (정상은 "(mask)")
 #
 # 촬영 팁: 정면, 머리부터 발끝까지 전부 보이게, 팔은 몸에서 살짝 떼고, 맨발에 몸에 붙는 옷
-#
-# 다음 단계: JSON -> .mhm 아바타 만들기는 createHuman.py 맨 아래 실행 방법 참고

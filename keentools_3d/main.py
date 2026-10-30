@@ -1,10 +1,13 @@
+import argparse
 import os
+import sys
 import time
 from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+# 다른 폴더에서 실행해도(예: create_avatar 파이프라인) 이 파일 옆의 .env를 읽음
+load_dotenv(Path(__file__).resolve().parent / ".env")
 API_KEY = os.getenv("KEENTOOLS_API_KEY")
 
 if not API_KEY:
@@ -26,8 +29,7 @@ def create_3d_avatar(image_folder="input_images", output_file="keentools_head.zi
     image_paths = [p for p in img_dir.iterdir() if p.suffix.lower() in valid_extensions]
     
     if not image_paths:
-        print(f"[-] '{image_folder}' 폴더에 유효한 이미지 파일이 없습니다.")
-        return
+        raise FileNotFoundError(f"'{image_folder}' 폴더에 유효한 이미지 파일이 없습니다.")
     
     if len(image_paths) > 15:
          print("[!] 이미지가 너무 많습니다. 처리 효율을 위해 15장으로 제한합니다.")
@@ -92,6 +94,7 @@ def create_3d_avatar(image_folder="input_images", output_file="keentools_head.zi
     dl_res = requests.get(model_url, headers=HEADERS, stream=True)
     dl_res.raise_for_status()
     
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
     with open(output_file, "wb") as f:
         for chunk in dl_res.iter_content(chunk_size=8192):
             f.write(chunk)
@@ -100,7 +103,12 @@ def create_3d_avatar(image_folder="input_images", output_file="keentools_head.zi
     print(f"[+] 결과 파일 저장 위치: {Path(output_file).absolute()}")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="얼굴 사진으로 KeenTools 머리(OBJ+JPG zip)를 만듭니다.")
+    parser.add_argument("--images", default="input_images", help="얼굴 사진 폴더 (기본값: input_images)")
+    parser.add_argument("--out", default="keentools_head.zip", help="저장할 zip 경로 (기본값: keentools_head.zip)")
+    args = parser.parse_args()
     try:
-        create_3d_avatar(image_folder="input_images", output_file="keentools_head.zip")
+        create_3d_avatar(image_folder=args.images, output_file=args.out)
     except Exception as e:
         print(f"\n[!] 오류가 발생했습니다: {e}")
+        sys.exit(1)  # 파이프라인(create_avatar/pipeline.py)이 실패를 알 수 있게
