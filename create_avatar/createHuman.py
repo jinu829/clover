@@ -26,6 +26,18 @@ import sys
 
 MAKEHUMAN_MODELS_DIR = r"C:\Users\enjoyer\Documents\makehuman\v1py3"
 MAKEHUMAN_SRC_DIR = os.environ.get("MAKEHUMAN_SRC", "")  # MakeHuman 소스의 makehuman/ 폴더 (makehuman.py가 있는 곳)
+# --mh-src / MAKEHUMAN_SRC가 없을 때 찾아보는 곳 (클론 폴더 자체를 가리켜도 그 안의 makehuman/을 찾음)
+_REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MAKEHUMAN_SRC_CANDIDATES = [
+    r"C:\makehuman-src",
+    r"C:\makehuman",
+    os.path.join(os.path.expanduser("~"), "makehuman-src"),
+    os.path.join(os.path.expanduser("~"), "makehuman"),
+    os.path.join(_REPO_DIR, "makehuman-src"),
+    os.path.join(_REPO_DIR, "makehuman"),
+    os.path.join(os.path.dirname(_REPO_DIR), "makehuman-src"),
+    os.path.join(os.path.dirname(_REPO_DIR), "makehuman"),
+]
 # 만들어진 .mhm을 모아 두는 폴더 (importToBlender.py가 여기서 읽음). 실행 위치와 상관없이 이 파일 옆 models_mhm/
 DEFAULT_OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models_mhm")
 
@@ -203,12 +215,48 @@ def generate_mhm_file(output_path, human):
 
 # --- 실행 진입점 --------------------------------------------------------------
 
+def _as_makehuman_src(path):
+    """path가 makehuman.py가 있는 폴더면 그대로, 클론 폴더면 그 안의 makehuman/을 돌려준다. 아니면 None."""
+    if not path:
+        return None
+    path = os.path.abspath(os.path.expanduser(path))
+    for candidate in (path, os.path.join(path, "makehuman")):
+        if os.path.isfile(os.path.join(candidate, "makehuman.py")):
+            return candidate
+    return None
+
+
+def find_makehuman_src(mh_src=MAKEHUMAN_SRC_DIR):
+    """MakeHuman 소스의 makehuman/ 폴더를 찾는다. 경로를 줬으면 그것만 보고, 안 줬으면 후보 경로를 찾아본다."""
+    if mh_src:
+        return _as_makehuman_src(mh_src)
+    for candidate in MAKEHUMAN_SRC_CANDIDATES:
+        found = _as_makehuman_src(candidate)
+        if found:
+            return found
+    return None
+
+
+def makehuman_src_help(mh_src=MAKEHUMAN_SRC_DIR):
+    """MakeHuman 소스를 못 찾았을 때 보여 줄 안내"""
+    if mh_src:
+        first = f"MakeHuman 소스 폴더가 아닙니다(makehuman.py 없음): {os.path.abspath(mh_src)}"
+    else:
+        first = "MakeHuman 소스를 찾지 못했습니다 (--mh-src, 환경변수 MAKEHUMAN_SRC, 기본 후보 경로 모두 없음)."
+    return (first + "\n"
+            "  1) 소스 받기 (처음 한 번):\n"
+            "       git clone --depth 1 https://github.com/makehumancommunity/makehuman.git C:\\makehuman-src\n"
+            "     C:\\makehuman-src 에 받으면 따로 지정하지 않아도 자동으로 찾습니다.\n"
+            "  2) 다른 곳에 받았다면 makehuman.py가 있는 폴더를 지정:\n"
+            "       $env:MAKEHUMAN_SRC = \"<클론 경로>\\makehuman\"   또는   --mh-src <클론 경로>\\makehuman")
+
+
 def _load_headless_human(mh_src):
     """MakeHuman 소스(makehuman/ 폴더)로 화면 없이 Human 객체를 만든다"""
-    mh_src = os.path.abspath(mh_src)
-    if not os.path.isfile(os.path.join(mh_src, "makehuman.py")):
-        sys.exit(f"MakeHuman 소스 폴더가 아닙니다(makehuman.py 없음): {mh_src}\n"
-                 "--mh-src 또는 환경변수 MAKEHUMAN_SRC로 소스의 makehuman/ 폴더를 지정하세요.")
+    found = find_makehuman_src(mh_src)
+    if not found:
+        sys.exit(makehuman_src_help(mh_src))
+    mh_src = found
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.chdir(mh_src)  # MakeHuman은 data/ 경로를 현재 폴더 기준으로 찾음
     sys.path[:0] = [mh_src] + [os.path.join(mh_src, p) for p in ("lib", "apps", "shared", "apps/gui", "core", "plugins")]
@@ -297,7 +345,7 @@ if __name__ == "__main__":
     parser.add_argument("--age", type=float, default=25.0, help="나이(세), 기본값 25")
     parser.add_argument("--muscle", type=float, default=0.5, help="근육 매크로 0~1, 기본값 0.5(보통)")
     parser.add_argument("--mh-src", default=MAKEHUMAN_SRC_DIR,
-                        help="MakeHuman 소스의 makehuman/ 폴더 (환경변수 MAKEHUMAN_SRC로도 지정 가능)")
+                        help="MakeHuman 소스의 makehuman/ 폴더 (환경변수 MAKEHUMAN_SRC로도 지정 가능, 없으면 C:\\makehuman-src 등에서 자동 탐색)")
     args = parser.parse_args()
 
     build_avatar(args.measurements_path, args.out, out_dir=args.out_dir, gender=args.gender, age_years=args.age,
@@ -310,7 +358,8 @@ if __name__ == "__main__":
 #    git clone --depth 1 https://github.com/makehumancommunity/makehuman.git C:\makehuman-src
 #    .venv313\Scripts\activate          (exportnumberbymediapipe.py에서 만든 가상환경)
 #    pip install numpy PyQt5 PyOpenGL
-#    매번 --mh-src를 쓰기 싫으면:  $env:MAKEHUMAN_SRC = "C:\makehuman-src\makehuman"
+#    C:\makehuman-src 에 받았으면 --mh-src 없이도 자동으로 찾음.
+#    다른 곳에 받았으면:  $env:MAKEHUMAN_SRC = "<클론 경로>\makehuman"
 #
 # 1) 측정값 JSON 하나로 아바타 만들기
 #    python createHuman.py measurements\sample_person.json --gender male --mh-src C:\makehuman-src\makehuman
